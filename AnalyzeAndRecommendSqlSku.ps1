@@ -19,6 +19,9 @@ param
     [Parameter(Mandatory=$true)][int]$CollectionTimeInSeconds,
     [Parameter(Mandatory=$true)][string]$ConnectionString
 )
+
+# Grabbed from SkuRecommendationDataCollectionScript, Added check for Instances and Custom Ports
+# This is how we are getting the computer name instead of manually entering it
 function ExtractServerNameFromConnectionStringForComputerName
 {
     param
@@ -46,6 +49,7 @@ function ExtractServerNameFromConnectionStringForComputerName
     return "";
 }
 
+# Basic prerequisite checks
 $DMADirectory = "C:\Program Files\Microsoft Data Migration Assistant\"
 
 If($PSVersionTable.PSVersion.Major -gt 5) {
@@ -66,19 +70,23 @@ if(!(Get-Module -Name Az.Accounts -ListAvailable)) {
     return
 }
 
+# Get the Computer Name from the Connection String (might not work with IPs, haven't tested yet)
 $ComputerName = ExtractServerNameFromConnectionStringForComputerName $ConnectionString
 
+# Create Our directories for our stats and recommendations in the same folder as the PowerShell script
 New-Item -ItemType Directory -Force -Path "$PSScriptRoot\Counters\", "$PSScriptRoot\$ComputerName-RecommenderOutput\" | Out-Null
 
 $SkuRecommenderScript = $DMADirectory + "SkuRecommendationDataCollectionScript.ps1"
 
+# Run the Sku recommendation script provided with DMA
 & $SkuRecommenderScript -ComputerName $ComputerName -OutputFilePath "$PSScriptRoot\Counters\$ComputerName-counters.csv" -CollectionTimeInSeconds $CollectionTimeInSeconds -DbConnectionString $ConnectionString
 
+# We are assuming the script doesn't write anything if it fails (quick glance at the script says it doesn't)
 If(!(Test-Path -Path "$PSScriptRoot\Counters\$ComputerName-counters.csv" -PathType Leaf)) {
-    Write-Host "The SQL Server information capturing script failed to create an output, please see above for more troubleshooting information."
-    
+    Write-Host "The SQL Server information capturing script failed to create an output, please see above for more troubleshooting information."    
     return
 } else {
+# Run the DMA command, this is really noisy on the CLI
     $DmaCmd = $DMADirectory + "DmaCmd.exe"
     & $DmaCmd /Action=SkuRecommendation /SkuRecommendationInputDataFilePath="$PSScriptRoot\Counters\$ComputerName-counters.csv" /SkuRecommendationTsvOutputResultsFilePath="$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices.tsv" /SkuRecommendationJsonOutputResultsFilePath="$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices.json" /SkuRecommendationOutputResultsFilePath="$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices.html" /SkuRecommendationPreventPriceRefresh=true
     Write-Host "Recommendations Complete!"
