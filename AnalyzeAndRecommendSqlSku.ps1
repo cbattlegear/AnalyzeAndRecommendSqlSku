@@ -33,17 +33,24 @@ function ExtractServerNameFromConnectionStringForComputerName
 
     foreach ($token in $splitString)
     {
-        if ($token.StartsWith("Server="))
-        {
-            if($token.Contains("\")){
+        if ($token.StartsWith("Server=")) {
+            #Remove slashes from Instance Names eg "\InstanceName"
+            if($token.Contains("\")) {
                 $server = ($token -split "\",-1,'SimpleMatch')[0]
             } else {
                 $server = $token
             }
+            #Remove commas for custom ports eg. ",1433"
             if($server.Contains(",")) {
                 $server = ($token -split ",")[0]
             }
-            return $server.Replace("Server=", "").Trim()
+            #Remove "Server=" from beginning of connection string
+            $server.Replace("Server=", "").Trim()
+            #Remove : from custom protocols eg. "tcp:"
+            if($server.Contains(":")) {
+                $server = ($server -split ":")[1]
+            }
+            return $server
         }
     }
     return "";
