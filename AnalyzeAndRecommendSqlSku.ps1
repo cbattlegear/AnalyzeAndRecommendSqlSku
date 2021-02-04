@@ -80,6 +80,17 @@ if(!(Get-Module -Name Az.Accounts -ListAvailable)) {
 # Get the Computer Name from the Connection String (might not work with IPs, haven't tested yet)
 $ComputerName = ExtractServerNameFromConnectionStringForComputerName $ConnectionString
 
+if($ComputerName.Contains(".")) {
+    Write-Host "It looks like you are using an IP Address or FQDN, this tool requires WMI access which is often only available on the local network."
+    $choice = ""
+    while ($choice -notmatch "[y|n]"){
+        $choice = Read-Host "Are you sure you want to continue? (Y/N)"
+    }
+    if($choice -eq "n") {
+        return
+    }
+}
+
 # Create Our directories for our stats and recommendations in the same folder as the PowerShell script
 New-Item -ItemType Directory -Force -Path "$PSScriptRoot\Counters\", "$PSScriptRoot\$ComputerName-RecommenderOutput\" | Out-Null
 
