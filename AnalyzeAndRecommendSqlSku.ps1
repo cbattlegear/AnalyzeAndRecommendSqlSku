@@ -45,7 +45,7 @@ function ExtractServerNameFromConnectionStringForComputerName
                 $server = ($token -split ",")[0]
             }
             #Remove "Server=" from beginning of connection string
-            $server.Replace("Server=", "").Trim()
+            $server = $server.Replace("Server=", "").Trim()
             #Remove : from custom protocols eg. "tcp:"
             if($server.Contains(":")) {
                 $server = ($server -split ":")[1]
@@ -80,7 +80,9 @@ if(!(Get-Module -Name Az.Accounts -ListAvailable)) {
 # Get the Computer Name from the Connection String (might not work with IPs, haven't tested yet)
 $ComputerName = ExtractServerNameFromConnectionStringForComputerName $ConnectionString
 
-if($ComputerName.Contains(".")) {
+Write-Host $ComputerName
+
+if($ComputerName.Contains(".") -and !($ComputerName.StartsWith("10.") -or $ComputerName.StartsWith("172.16.") -or $ComputerName.StartsWith("192.168."))) {
     Write-Host "It looks like you are using an IP Address or FQDN, this tool requires WMI access which is often only available on the local network."
     $choice = ""
     while ($choice -notmatch "[y|n]"){
