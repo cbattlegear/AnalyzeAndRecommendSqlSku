@@ -60,27 +60,33 @@ function ExtractServerNameFromConnectionStringForComputerName
 $DMADirectory = "C:\Program Files\Microsoft Data Migration Assistant\"
 
 If($PSVersionTable.PSVersion.Major -gt 5) {
-    Write-Host "To collect machine information, the data collection script uses the Get-WmiObject cmdlet, which was deprecated in PowerShell 6. To run this script in PowerShell 6 or 7, you must replace the WMI cmdlets with the newer CIM cmdlets."
-    Write-Host "Please go to https://aka.ms/dmaskuprereq for a list of prequisites."
+    Write-Warning "To collect machine information, the data collection script uses the Get-WmiObject cmdlet, which was deprecated in PowerShell 6. To run this script in PowerShell 6 or 7, you must replace the WMI cmdlets with the newer CIM cmdlets."
+    Write-Warning "Please go to https://aka.ms/dmaskuprereq for a list of prequisites."
     return
 }
 
 If(!(Test-Path -Path $DMADirectory -PathType Container)) {
-    Write-Host "Please install the newest version of the Database Migration Assistant."
-    Write-Host "Please go to https://aka.ms/dmaskuprereq for a list of prequisites."
+    Write-Warning "Please install the newest version of the Database Migration Assistant."
+    Write-Warning "Please go to https://aka.ms/dmaskuprereq for a list of prequisites."
     return
 }
 
 if(!(Get-Module -Name Az.Accounts -ListAvailable)) {
-    Write-Host "Ensure that your computer has the Azure Powershell Module installed."
-    Write-Host "Please go to https://aka.ms/dmaskuprereq for a list of prequisites."
+    Write-Warning "Ensure that your computer has the Azure Powershell Module installed."
+    Write-Warning "Please go to https://aka.ms/dmaskuprereq for a list of prequisites."
     return
 }
 
 # Get the Computer Name from the Connection String (might not work with IPs, haven't tested yet)
 $ComputerName = ExtractServerNameFromConnectionStringForComputerName $ConnectionString
 
-Write-Host $ComputerName
+try {
+    Get-CimInstance win32_bios -ComputerName $ComputerName -ErrorAction Stop | Out-Null
+} catch {
+    Write-Warning "Cannot access WMI objects on the computer $ComputerName, see the error below for more information."
+    Write-Error $Error[0]
+    return
+}
 
 if($ComputerName.Contains(".") -and !($ComputerName.StartsWith("10.") -or $ComputerName.StartsWith("172.16.") -or $ComputerName.StartsWith("192.168."))) {
     Write-Host "It looks like you are using an IP Address or FQDN, this tool requires WMI access which is often only available on the local network."
