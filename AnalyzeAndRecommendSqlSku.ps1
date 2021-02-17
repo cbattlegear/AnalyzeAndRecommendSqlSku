@@ -115,6 +115,149 @@ If(!(Test-Path -Path "$PSScriptRoot\Counters\$ComputerName-counters.csv" -PathTy
 # Run the DMA command, this is really noisy on the CLI
     $DmaCmd = $DMADirectory + "DmaCmd.exe"
     & $DmaCmd /Action=SkuRecommendation /SkuRecommendationInputDataFilePath="$PSScriptRoot\Counters\$ComputerName-counters.csv" /SkuRecommendationTsvOutputResultsFilePath="$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices.tsv" /SkuRecommendationJsonOutputResultsFilePath="$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices.json" /SkuRecommendationOutputResultsFilePath="$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices.html" /SkuRecommendationPreventPriceRefresh=true
+# This is from the RecommendationExplainer.htm file, just have them separated out for readability.
+    $recommenderhtml = @'
+<html>
+    <head>
+        <title>Database Recommendation Information</title>
+        <style>
+            body {
+                font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
+                font-size: 14px;
+                line-height: 1.42857143;
+                color: #333;
+                background-color: #fff;
+            }
+
+            #sqldbrecommendations {
+                display: flex;
+                flex-direction:row;
+                flex-wrap:wrap;
+            }
+
+            .column {
+                flex: 50%;
+            }
+
+            .recommended {
+                background-color: khaki;   
+            }
+
+            .label {
+                font-weight: bold;
+            }
+
+            .reasons {
+                margin-left: 1.5em;
+            }
+
+            .prediction {
+                margin: 1em 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div id='sqldb'>
+            <h2>SQL DB Recommendations</h2>
+            <div id='sqldbrecommendations'></div>
+        </div>
+        <div id='sqlmi'>
+            <h2>SQL MI Recommendations</h2>
+            <div id='sqlmirecommendations'></div>
+        </div>
+        <script>
+            /* SQL DB Types */
+            sqlskutypemapping = {
+                DTU_STANDARD_TIER: 'DTU Model, Standard',
+                DTU_PREMIUM_TIER: 'DTU Model, Premium',
+                VCORE_GENERAL_PURPOSE: 'vCore Model, General Purpose, Gen 4',
+                VCORE_GENERAL_PURPOSE_GEN5: 'vCore Model, General Purpose, Gen 5',
+                VCORE_BUSINESS_CRITICAL: 'vCore Model, Business Critical, Gen 4',
+                VCORE_BUSINESS_CRITICAL_GEN5: 'vCore Model, Business Critical, Gen 5',
+                GENERAL_PURPOSE_GEN_5_MI: 'General Purpose Managed Instance',
+                BUSINESS_CRITICAL_GEN_5_MI: 'Business Critical Managed Instance'
+            };
+
+            let reader = new FileReader();
+            sqldbinput = JSON.parse('|SQLDBJSON|');
+            sqlmiinput = JSON.parse('|SQLMIJSON|');
+            
+            currentsection = 'sqldbrecommendations';
+            var sqldb = {};
+            sqldbinput.Predictions.forEach(restructureSqlDbInput);
+            Object.keys(sqldb).forEach(outputSqlDbs);
+
+            currentsection = 'sqlmirecommendations';
+            var sqlmi = {};
+            sqlmiinput.Predictions.forEach(restructureSqlDbInput);
+            Object.keys(sqlmi).forEach(outputSqlDbs);
+
+            function restructureSqlDbInput(input, index) {
+                /* Check for database name if exists, add object to array, if not create array, then add object */
+                let hold = (({IsTierRecommended, PredictionTier, PredictedSku, PricePerMonth, TierExclusionReasons}) => ({IsTierRecommended, PredictionTier, PredictedSku, PricePerMonth, TierExclusionReasons}))(input);
+                if(input.DatabaseName === undefined) {
+                    if(sqlmi[input.DatabaseNames] === undefined) {
+                        sqlmi[input.DatabaseNames] = [];
+                    }
+                        sqlmi[input.DatabaseNames].push(hold);
+                } else {
+                    if(sqldb[input.DatabaseName] === undefined) {
+                        sqldb[input.DatabaseName] = [];
+                    }
+                        sqldb[input.DatabaseName].push(hold);
+                }
+            }
+
+            function outputSqlDbs(dbinfo) {
+                if(currentsection == 'sqldbrecommendations') {
+                    var recommended = sqldb[dbinfo].filter(db => db.IsTierRecommended);
+                    var notrecommended = sqldb[dbinfo].filter(db => !(db.IsTierRecommended));
+                } else {
+                    var recommended = sqlmi[dbinfo].filter(db => db.IsTierRecommended);
+                    var notrecommended = sqlmi[dbinfo].filter(db => !(db.IsTierRecommended));
+                }
+                output = `<div class='column'><h3>${dbinfo}</h3>
+                    <div class='recommended'><h4>Recommended SKU</h4>`;
+                    for(i = 0; i < recommended.length; i++) {
+                        output += `<div class='prediction'>`;
+                        output += `<div><span class='label'>Predicted Tier:</span> ${sqlskutypemapping[recommended[i].PredictionTier]}</div>
+                                    <div><span class='label'>Predicted Sku:</span> ${recommended[i].PredictedSku}</div>
+                                    <div><span class='label'>Estimated Monthly Price:</span> ${'$' + recommended[i].PricePerMonth.toFixed(2)}</div>`;
+                        output += `<hr /></div>`;
+                    }
+                output += `</div>
+                <div class='notrecommended'><h4>Not Recommended SKUs</h4>`;
+                    for(i = 0; i < notrecommended.length; i++) {
+                        output += `<div class='prediction'>`;
+                        output += `<div><span class='label'>Predicted Tier:</span> ${sqlskutypemapping[notrecommended[i].PredictionTier]}</div>
+                                    <div><span class='label'>Predicted Sku:</span> ${notrecommended[i].PredictedSku}</div>
+                                    <div><span class='label'>Estimated Monthly Price:</span> ${'$' + notrecommended[i].PricePerMonth.toFixed(2)}</div>`;
+                        if(notrecommended[i].TierExclusionReasons.length > 0) {
+                            output += `<div class='reasons'><p class='label'>Reasons this tier wasn't selected</p>
+                                <ul>`;
+                            for(j = 0; j < notrecommended[i].TierExclusionReasons.length; j++) {
+                                output += `<li>${notrecommended[i].TierExclusionReasons[j].RuleDescription}</li>`;
+                            }
+                            output += '</ul></div>';
+                        }
+                        output += `<hr /></div>`;
+                    }
+                output += `</div>
+                </div>`;
+                document.getElementById(currentsection).innerHTML += output;
+            }            
+        </script>
+    </body>
+</html>
+'@
+    $sqldbjson = Get-Content "$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices_SQL_DB.json";
+    $sqlmijson = Get-Content "$PSScriptRoot\$ComputerName-RecommenderOutput\$ComputerName-prices_SQL_MI.json";
+
+    $recommenderhtml = $recommenderhtml.Replace("|SQLDBJSON|", $sqldbjson);
+    $recommenderhtml = $recommenderhtml.Replace("|SQLMIJSON|", $sqlmijson);
+
+    $recommenderhtml | Out-File "$PSScriptRoot\$ComputerName-RecommenderOutput\RecommendationExplainer.htm";
+
     Write-Host "Recommendations Complete!"
     Write-Host "View your recommendations at $PSScriptRoot\$ComputerName-RecommenderOutput\"
 }
